@@ -1,0 +1,27 @@
+{
+  "name": "zar-mysqlmaster",
+  "version": "1.0.0",
+  "description": "MySql queries generagor",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myvzar/MySql-Master.git"
+  },
+  "keywords": [
+    "mysql",
+    "generator",
+    "queries"
+  ],
+  "author": "Mike Zaraysky",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/myvzar/MySql-Master/issues"
+  },
+  "homepage": "https://github.com/myvzar/MySql-Master#readme",
+  "dependencies": {
+    "mysql": "^2.9.0"
+  }
+}
