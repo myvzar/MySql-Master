@@ -20,3 +20,4 @@ $RECYCLE.BIN/
 *.lnk
 
 .idea
+/node_modules/
