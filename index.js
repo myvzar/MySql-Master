@@ -1,5 +1,5 @@
 var mysql = require('mysql');
-var Config = require('nconf').get('database');
+var Config = {};
 
 var CONNECTION = false;
 
@@ -11,6 +11,11 @@ var ACTION_DELETE = 3;
 var DEF_SECTION_NAME = 'section';
 
 var MySqlMaster = function(){};
+
+MySqlMaster.prototype.setDbInfo = function(conf){
+    Config = conf;
+    return this;
+};
 
 MySqlMaster.prototype.Action        = false;
 MySqlMaster.prototype.condType      = 'AND';
