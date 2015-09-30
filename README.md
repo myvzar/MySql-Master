@@ -1,4 +1,4 @@
-# MySql-Master
+# MySql-Master for node.js
 node MySql query generator
 
 Easy generate MySql queries.
