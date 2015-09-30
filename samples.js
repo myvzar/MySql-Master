@@ -5,7 +5,7 @@ var DBconf = {
     database : 'test'
 };
 
-var MySql = require('MySqlMaster').setDbInfo(DBconf);
+var MySql = require('zar-mysqlmaster').setDbInfo(DBconf);
 
 MySql.Select('users').GetArray(false,function(err,data){
     console.log(data);
