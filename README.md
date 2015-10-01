@@ -15,6 +15,7 @@ var DBconf = {
     password : '',
     database : 'test'
 };
+
 ```
 var MySql = require('zar-mysqlmaster').setDbInfo(DBconf);
 
@@ -36,15 +37,18 @@ MySql
 ##Parts:
 - .setDbInfo(configs) : DB connections parameter. configs must be object.
 - .Table(tablename [,`psevdo`])   : Set table.
+
 ####Main Actions
 - Select(tablename [,`psevdo`])   : Start select & set table (`psevdo` means use AS. (SELECT USERS AS U))
 - Insert(tablename)   : Start insert & set table
 - Update(tablename)   : Start update & set table
 - Delete(tablename)   : Start delete & set table
+
 ####Table columns
 - Fields(fields [,psevdo] ) : choose colums to get from DB (uses in Select)
 - fields is array or object. array default. use object if need use AS
 - Data(fields) : data for update or insert. fields must be object
+
 ####Addition
 - Distinict(enable) : Select distinict. Def true
 - Count([distinict] [,field] [,countName]) : Count from table by field. Default field is `id`.
