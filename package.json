@@ -1,6 +1,6 @@
 {
   "name": "zar-mysql-master",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MySql queries generagor",
   "main": "index.js",
   "scripts": {
