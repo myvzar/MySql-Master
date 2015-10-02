@@ -465,10 +465,8 @@ MySqlMaster.prototype.GetOne = function(close,callback)
 {
     this.Range(1);
     this.Execute(close,function(err,rows){
-        if(!err && rows.length)
-        {
-            callback(err,rows[0]);
-        }
+		rows = (rows.length) ? rows[0] : {};
+        callback(err,rows);
     });
 };
 
