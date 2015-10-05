@@ -33,7 +33,7 @@ MySql
     .Insert('users')                          // table to insert
     .Data(InsertData)                         // data to insert
     .onDuplicate({name:'Mike2'})              // Duplicate fix
-    .Execute(true,function(err,data){
+    .Execute(false,function(err,data){
         console.log('user inserted!');
     });
 ```
@@ -50,7 +50,7 @@ MySql
     .Insert('users')                          // table to update
     .Data(InsertData)                         // data to update
     .Condition('id',3)                        // update conditions
-    .Execute(true,function(err,data){
+    .Execute(false,function(err,data){
         console.log('user updated!');
     });
 ```
@@ -61,7 +61,7 @@ MySql
 MySql
     .Delete('users')                           // table to delete row
     .Condition('id',21)                        // update conditions
-    .Execute(true,function(err,data){
+    .Execute(false,function(err,data){
         console.log('user updated!');
     });
 ```
@@ -77,7 +77,7 @@ MySql
     .Group('city')
     .Range(0,21)
     .Condition('id',['21','22','23'],'in')
-    .GetArray(function(err,data){
+    .GetArray(false,function(err,data){
         console.log('selected users is:', data);
     });
 ```
