@@ -465,7 +465,7 @@ MySqlMaster.prototype.GetOne = function(close,callback)
 {
     this.Range(1);
     this.Execute(close,function(err,rows){
-		rows = (rows.length) ? rows[0] : false;
+		rows = (!err && rows && rows.length) ? rows[0] : false;
         callback(err,rows);
     });
 };
@@ -473,7 +473,7 @@ MySqlMaster.prototype.GetOne = function(close,callback)
 MySqlMaster.prototype.GetCell = function(close,callback)
 {
     this.Execute(close,function(err,rows){
-        if(!err && rows.length)
+        if(!err && rows && rows.length)
         {
             for(var k in rows[0])
             {
