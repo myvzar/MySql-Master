@@ -443,7 +443,6 @@ class Database {
   run(){
     return new Promise((resolve,reject)=>{
       const query = this.__sql();
-      console.info(query);
       if(!query) { reject('Bad Action') }
       else {
         query.sql = `${query.sql};`;

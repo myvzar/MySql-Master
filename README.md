@@ -1,3 +1,5 @@
+# IT IS README FOR 1 VERSION. README FOR 2 VERSION COMING SOON!
+
 # MySql-Master for node.js
 node MySql query generator
 
