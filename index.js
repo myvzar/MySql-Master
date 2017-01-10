@@ -1,489 +1,512 @@
-var mysql = require('mysql');
-var Config = {};
+const mysqlDriver = require('mysql');
 
-var CONNECTION = false;
+const _SELECT = Symbol();
+const _INSERT = Symbol();
+const _UPDATE = Symbol();
+const _DELETE = Symbol();
 
-var ACTION_SELECT = 0;
-var ACTION_INSERT = 1;
-var ACTION_UPDATE = 2;
-var ACTION_DELETE = 3;
+class Database {
 
-var DEF_SECTION_NAME = 'section';
+  constructor(db){
+    this.query = {};
+    this.db = db;
+  }
 
-var MySqlMaster = function(){};
+  clear(){
+    this.query = {};
+    this.__isset('fields',[]);
+  }
 
-MySqlMaster.prototype.setDbInfo = function(conf){
-    Config = conf;
+  table(table,_ps = null){
+    let action = this.__q('action');
+    this.clear();
+    this.__q('action',action);
+    this.__q('table',table);
+    this.__q('psevdo',_ps);
     return this;
-};
+  }
 
-MySqlMaster.prototype.Action        = false;
-MySqlMaster.prototype.condType      = 'AND';
+  /*----------- ACTIONS -----------*/
 
-MySqlMaster.prototype._table        = false;
-MySqlMaster.prototype._psevdo_table = false;
-MySqlMaster.prototype._distinict    = false;
-MySqlMaster.prototype.condSection   = false;
-MySqlMaster.prototype.mustRange     = false;
-
-MySqlMaster.prototype._fields       = [];
-MySqlMaster.prototype._order        = [];
-MySqlMaster.prototype._group        = [];
-MySqlMaster.prototype._join         = [];
-MySqlMaster.prototype._conditions   = [];
-MySqlMaster.prototype._condData     = [];
-
-MySqlMaster.prototype.__DATA        = [];
-MySqlMaster.prototype.__DUPL        = [];
-
-MySqlMaster.prototype._from         = 0;
-MySqlMaster.prototype._to           = 30;
-
-
-MySqlMaster.prototype.Table = function(Table,Psevdo)
-{
-    this._table = Table;
-    this._psevdo_table = Psevdo;
-    this.__toDefaults();
-};
-
-MySqlMaster.prototype.__toDefaults = function()
-{
-    this.Action       = ACTION_SELECT;
-
-    this._distinict   = false;
-    this._from        = 0;
-    this._to          = 30;
-    this.condSection  = false;
-    this.mustRange    = false;
-    this.condType     = 'AND';
-
-    this._fields      = [];
-    this._order       = [];
-    this._group       = [];
-    this._join        = [];
-    this._conditions  = [];
-    this._condData    = [];
-    this.__DATA       = [];
-    this.__DUPL       = [];
-    this.__genData    = [];
-};
-
-/* ------------------------------------------- ACTIONS ------------------------------------------- */
-MySqlMaster.prototype.Select = function(Table,Psevdo)
-{
-    if(Table) this.Table(Table,Psevdo);
-    this.Action = ACTION_SELECT;
+  __action(action,table=null){
+    if(table) this.table(table);
+    this.__q('action',action);
     return this;
-};
+  }
 
-MySqlMaster.prototype.Insert = function(Table)
-{
-    if(Table) this.Table(Table);
-    this.Action = ACTION_INSERT;
+  Select(table=null) {
+    return this.__action(_SELECT,table);
+  }
+
+  Insert(table=null) {
+    return this.__action(_INSERT,table);
+  }
+
+  Update(table=null) {
+    return this.__action(_UPDATE,table);
+  }
+
+  Delete(table=null) {
+    return this.__action(_DELETE,table);
+  }
+
+  /*----------- PARTS -----------*/
+
+  field(name,_ps=null,as=null){
+    this.query.fields.push({
+      name:name,
+      ps:_ps,
+      as:as
+    });
     return this;
-};
+  }
 
-MySqlMaster.prototype.Update = function(Table)
-{
-    if(Table) this.Table(Table);
-    this.Action = ACTION_UPDATE;
-    return this;
-};
-
-MySqlMaster.prototype.Delete = function(Table)
-{
-    if(Table) this.Table(Table);
-    this.Action = ACTION_DELETE;
-    return this;
-};
-
-/* -------------------------------------------- SYSTEM ------------------------------------------ */
-MySqlMaster.prototype.field = function(field)
-{
-    this._fields.push(field); return this;
-};
-
-MySqlMaster.prototype._isEmptyObj = function(obj)
-{
-    for(var key in obj){return false;}
-    return true;
-};
-MySqlMaster.prototype.getPsevdo = function(psevdo,wrap,col)
-{
-    var Ps = (!psevdo) ? (this._psevdo_table ? this._psevdo_table : this._table) : psevdo;
-    if(col) {
-        Ps = wrap ? '`' + Ps + '`.`' + col + '`' : Ps + '.' + col;
-    } else {Ps = wrap ? '`' + Ps + '`' : Ps ;}
-    return Ps;
-};
-MySqlMaster.prototype.__join = function(type,table,params,psevdo)
-{
-    if(table && params)
-    {
-        var Sql = type + ' JOIN `' + table + '`';
-        if(psevdo) { Sql += ' AS `' + psevdo + '`' }
-
-        if(params instanceof Array)
-        {
-            Sql+= ' ON(' + params.join(' AND ') + ')';
-        } else {
-            Sql += ' USING(`' + params + '`)';
+  fields(fields,_ps=null){
+    if(Array.isArray(fields)) {
+      fields.forEach((field)=>this.field(field,_ps));
+    }
+    if(this._isObject(fields)) {
+      for(let i in fields) {
+        if(fields.hasOwnProperty(i)) {
+          this.field(i,_ps,fields[i])
         }
-        this._join.push(Sql);
-    }
-};
-
-MySqlMaster.prototype.addCondition = function(condition,data)
-{
-    this._conditions.push(condition);
-    if(data && data.length)
-    {
-        if(this._condData.length) {
-            this._condData = this._condData.concat(data);
-        } else { this._condData = data; }
-    }
-};
-
-MySqlMaster.prototype.__toExData = function(data)
-{
-    if(data.length)
-    {
-        this.__genData = this.__genData.length ? this.__genData.concat(data) : data;
-    }
-};
-
-/* -------------------------------------------- PARTS ------------------------------------------- */
-MySqlMaster.prototype.Fields = function(fields,psevdo)
-{
-    var Prefix = this.getPsevdo(psevdo,true);
-    if(fields instanceof Array) {
-        if(fields.length)
-        {for(var cf = 0; cf<fields.length; cf++) { this.field(Prefix + '.`' + fields[cf] +'`'); }}
-    } else {
-        if(fields instanceof Object && !this._isEmptyObj(fields))
-        {for(var k in fields){this.field(Prefix + '.`' + k +'` AS `' + fields[k] + '`');}}
+      }
     }
     return this;
-};
+  }
 
-MySqlMaster.prototype.Data = function(fields)
-{
-    this.__DATA.push(fields);
+  data(values){
+    this.__q('data',values);
     return this;
-};
+  }
 
-MySqlMaster.prototype.Count = function(distinict,field,countName)
-{
-    field = field || 'id';
-    field = this.getPsevdo(false,true,field);
-    countName = countName || 'count';
-    this.field('COUNT(' + (distinict ? 'DISTINCT ' : '') + field + ') as `' + countName + '`');
+  distinct(status=true){
+    this.__q('distinct',status);
     return this;
-};
+  }
 
-MySqlMaster.prototype.Distinict = function(d)
-{
-    this._distinict = (d == undefined ? true : d);
+  allowAll(status=true){
+    this.__q('allowAll',status);
     return this;
-};
+  }
 
-MySqlMaster.prototype.Range = function(from,count)
-{
-    if(from)
-    {
-        from = from < 0 ? 0 : from;
-        if(!count){count = from;from = 0;}
-        this._from = from;
-        this._to = count;
-        this.mustRange = true;
+  from(int){
+    this.__q('from',parseInt(int));
+    return this;
+  }
+
+  page(page,inPage){
+    if(page<1) { page = 1 }
+    return this.count(inPage).from((page-1)*inPage);
+  }
+
+  count(int){
+    this.__q('count',parseInt(int));
+    return this;
+  }
+
+  order(column,order,_ps=null){
+    this.__isset('order',[]);
+    this.query.order.push({
+      column : column,
+      order : (o=>{
+        if(o == '>') { o = 'desc'; }
+        if(o == '<') { o = 'asc'; }
+        return o.toUpperCase();
+      })(order),
+      ps:_ps
+    });
+    return this;
+  }
+
+  group(column,_ps=null){
+    this.__isset('group',[]);
+    this.query.group.push({
+      column : column,
+      ps : _ps
+    });
+    return this;
+  }
+
+  innerJoin(table,params,_ps=null){
+    return this._join('INNER',table,params,_ps)
+  }
+
+  leftJoin(table,params,_ps=null){
+    return this._join('LEFT',table,params,_ps)
+  }
+
+  rightJoin(table,params,_ps=null){
+    return this._join('RIGHT',table,params,_ps)
+  }
+
+  condition(column,value,type=null,_ps=null){
+    this.__isset('condition',[]);
+    let subType = null;
+    if(value && !!value.getSql) {
+      value = value.getSql();
+      subType = type;
+      type = 'sql';
     }
+    this.query.condition.push({
+      column : column,
+      value : value,
+      sub : subType,
+      type : type ? type.toLowerCase() : null,
+      ps : _ps,
+    });
     return this;
-};
+  }
 
-MySqlMaster.prototype.Order = function(col,order,psevdo)
-{
-    col = col || 'id';
-    var ColName = (psevdo !== null) ? this.getPsevdo(psevdo,true,col) : '`' + col + '`';
-    order = order || '>';
-    if(order == '>') { order = 'desc'; }
-    if(order == '<') { order = 'asc';  }
-    order = order.toUpperCase();
-    this._order.push(ColName + ' ' + order);
+  id(int,_ps=null){
+    return this.condition('id',parseInt(int),null,_ps)
+  }
+
+  conditionType(type='AND'){
+    this.__q('conditionType',type);
     return this;
-};
+  }
 
-MySqlMaster.prototype.Group = function(col,psevdo)
-{
-    this._group.push(this.getPsevdo(psevdo,true,col));
+  duplicate(rewrite){
+    this.__q('duplicate',rewrite);
     return this;
-};
+  }
 
+  /*----------- SYSTEM -----------*/
 
-MySqlMaster.prototype.InnerJoin = function(table,params,psevdo)
-{
-    this.__join('INNER',table,params,psevdo);
+  __isset(name,defValue){
+    if(!this.__q(name)) {
+      this.__q(name,defValue)
+    }
+  }
+
+  _isObject(val){
+    return (typeof val === "object" && !Array.isArray(val) && val !== null);
+  }
+
+  _join(type,table,params,_ps=null){
+    this.__isset('join',[]);
+    this.query.join.push({
+      type : type,
+      table : table,
+      params : params,
+      ps : _ps,
+    });
     return this;
-};
+  }
 
-MySqlMaster.prototype.LeftJoin = function(table,params,psevdo)
-{
-    this.__join('LEFT',table,params,psevdo);
-    return this;
-};
+  __q(name,value=null){
+    if(!name) return null;
+    return !value ? this.query[name]||null : this.query[name] = value;
+  }
 
-MySqlMaster.prototype.RightJoin = function(table,params,psevdo)
-{
-    this.__join('RIGHT',table,params,psevdo);
-    return this;
-};
+  /*----------- SQL -----------*/
 
-MySqlMaster.prototype.startOr = function(section)
-{
-    section = section || DEF_SECTION_NAME;
-    this.condSection = section;
-    return this;
-};
+  _column(column,_ps){
+    const placeholder = !_ps ? (()=>
+        !this.query.psevdo ?
+          this.query.table :
+          this.query.psevdo)()
+      : _ps;
+    return this.db.escapeId(`${placeholder?placeholder+'.':''}${column}`);
+  }
 
-MySqlMaster.prototype.stopOr = function()
-{
-    this.condSection = false;
-};
+  _conditionType(type,def){
+    return (type||def).toLowerCase();
+  }
 
-MySqlMaster.prototype.Condition = function(col,data,type,psevdo)
-{
-    if(col)
-    {
-        var Column = this.getPsevdo(psevdo,true,col);
-        if(!data && data !==null) { this.addCondition(col); }
-        else {
-            if(data === null) { this.addCondition(Column + ' ' + ((!type || type=="is")?'IS NULL':'IS NOT NULL')); }
-            else {
-                var Condition;
-                var ConditionData;
-
-                if(data instanceof Array)
-                {
-                    type = type || 'in';
-                    type.toLowerCase();
-                    var Ps = [];
-                    switch (type)
-                    {
-                        case 'in':
-                        case '!in':
-                        case '!':
-                            for(var c=0;c<data.length;c++) {Ps.push('?');}
-                            Condition = Column + ' ' + (type!='in' ? 'NOT ' : '') + 'IN';
-                            Condition+='(' + Ps.join(',') + ')';
-                            ConditionData = data;
-                            break;
-                        case 'or':
-                            for(var c=0;c<data.length;c++) {
-                                if(data[c]!==null) {Ps.push(Column + '=?');}
-                                else {
-                                    Ps.push(Column + ' IS NULL');
-                                    data.splice(c,1);
-                                }
-                            }
-                            Condition = '(' + Ps.join(' OR ') + ')';
-                            ConditionData = data;
-                            break;
-                        case 'between':
-                            Condition = '('+Column+' BETWEEN ? AND ?)';
-                            ConditionData = data;
-                            break;
-                    }
-                } else {
-                    type = type || '=';
-                    type.toLowerCase();
-                    switch (type)
-                    {
-                        case '=':
-                        case '!':
-                        case '!=':
-                            Condition = Column + ((type!='='?'!':'')) + '=?';
-                            ConditionData = [data];
-                            break;
-                        case 'like':
-                        case '%':
-                            Condition = Column + ' LIKE ?';
-                            data = type != 'like' ? '%' + data + '%' : data;
-                            ConditionData = data;
-                            break;
-                        case '!in':
-                            Condition = Column + ' NOT IN(' + data + ')';
-                            break;
-                    }
+  ___sql_condition(){
+    if(Array.isArray(this.query.condition) && this.query.condition.length) {
+      return this.query.condition.map(condition=>{
+        let condSql  = null;
+        let condData = null;
+        if(condition.column) {
+          if(!condition.value && !condition.type && condition.value!==null) {
+            condSql = condition.column;
+          } else {
+            const condColumn = this._column(condition.column,condition.ps);
+            if(condition.value === null) {
+              condSql = `${condColumn} IS${!condition.type || condition.type == 'is' ? '' : ' NOT'} NULL`;
+            } else {
+              if(Array.isArray(condition.value)) {
+                const type = this._conditionType(condition.type,'in');
+                switch (type) {
+                  case 'or':
+                  case '||':
+                    condSql = condition.value
+                      .map(c=>mysqlDriver.format(`${condColumn} = ?`,c))
+                      .join(' OR ');
+                    break;
+                  case 'between':
+                  case '><':
+                    condSql = `${condColumn} BETWEEN ? AND ?`;
+                    condData = [condition.value[0]||0,condition.value[1]||0];
+                    break;
+                  case 'in':
+                  case '!in':
+                  case '!':
+                  default:
+                    condSql = `${condColumn} ${type!='in'?'NOT ':''}IN(?)`;
+                    condData = [condition.value];
+                    break;
                 }
-                this.addCondition(Condition,ConditionData);
-            }
-        }
-    }
-    return this;
-};
-
-MySqlMaster.prototype.onDuplicate = function(data)
-{
-    this.__DUPL = data;
-    return this;
-};
-
-/* --------------------------------------------- SQL -------------------------------------------- */
-MySqlMaster.prototype.__genData = [];
-MySqlMaster.prototype.__sql_Insert = function()
-{
-    if(this.__DATA.length)
-    {
-        var Sql = 'INSERT INTO `' + this._table + '` ';
-
-        var Keys = [];
-        var Valls =[];
-        var Data = [];
-
-        var Pattern = this.__DATA[0];
-        for (var key in Pattern) {Keys.push(key);}
-        Sql+= '(`' + Keys.join('`, `') + '`)';
-        Sql+= ' VALUES ';
-
-        for(var i=0;i<this.__DATA.length;i++)
-        {
-            var CurLine = '(';
-            var CPP = [];
-            for(key in Pattern){
-                CPP.push('?');
-                Data.push(this.__DATA[i][key]);
-            }
-            CurLine+=CPP.join(',');
-            CurLine+=')';
-            Valls.push(CurLine);
-        }
-        Sql+=Valls.join(',');
-        Keys = Valls = Pattern = CurLine = CPP = null;
-
-        if(!this._isEmptyObj(this.__DUPL))
-        {
-            Sql += ' ON DUPLICATE KEY UPDATE ';
-            CPP = [];
-            for(key in this.__DUPL)
-            {
-                CPP.push('`'+key+'`=?');
-                Data.push(this.__DUPL[key]);
-            }
-            Sql += CPP.join(',');
-            Keys = Valls = Pattern = CurLine = CPP = null;
-        }
-        Sql+=';';
-        this.__genData = Data;
-        return Sql;
-    }
-    return false;
-};
-/* ------------------------------------------- RESULTS ------------------------------------------ */
-MySqlMaster.prototype.getSql = function()
-{
-    if(this.Action == ACTION_INSERT) { return this.__sql_Insert(); }
-    else {
-        var Sql = false;
-        if(this.Action == ACTION_SELECT) {
-            Sql = 'SELECT ';
-            if(this._distinict) { Sql+= 'DISTINCT '; }
-            if(this._fields.length) {
-                Sql+= this._fields.join(', ');
-            } else {Sql+='*';}
-
-            Sql+=' FROM `' + this._table + '`';
-            if(this._psevdo_table) { Sql+= ' AS `' + this._psevdo_table + '`'; }
-
-            if(this._join.length) { Sql+=' ' + this._join.join(' '); }
-
-        } else {
-            if(this.Action == ACTION_UPDATE) {
-                if(this.__DATA.length)
-                {
-                    Sql = 'UPDATE `' + this._table + '` SET ';
-                    var Pattern = this.__DATA[0];
-                    var ss = [];
-                    var Data = [];
-                    for(var key in Pattern) {
-                        ss.push('`'+key+'`=?');
-                        Data.push(Pattern[key]);
+              } else {
+                const type = this._conditionType(condition.type,'=');
+                switch (type) {
+                  case '=':
+                  case '!':
+                  case '!=':
+                    condSql = `${condColumn} ${type!='='?'!':''}= ?`;
+                    condData = condition.value;
+                    break;
+                  case 'like':
+                  case '%':
+                  case '%_':
+                  case '_%':
+                    condSql = `${condColumn} LIKE ?`;
+                    condData = ((t,v)=>{
+                      switch(t) {
+                        case '%' : return `%${v}%`; break;
+                        case '%_': return `%${v}`; break;
+                        case '_%': return `${v}%`; break;
+                        default: return v; break;
+                      }
+                    })(type,condition.value);
+                    break;
+                  case '<':
+                  case '>':
+                    condSql = `${condColumn} ${type} ?`;
+                    condData = condition.value;
+                    break;
+                  case 'sql':
+                    condSql = `${condColumn} `;
+                    const subType = this._conditionType(condition.sub,'in');
+                    switch (subType){
+                      case 'in': condSql+=`IN(${condition.value})`; break;
+                      case '!in':
+                        condSql+=`NOT IN(${condition.value})`;
+                        break;
+                      case '=': condSql+=`= (${condition.value})`; break;
+                      case '!=':
+                        condSql+=`!= (${condition.value})`;
+                        break;
+                      case '>':
+                      case '<':
+                        condSql+=`${subType} (${condition.value})`;
+                        break;
                     }
-                    Sql+= ss.join(',');
-                    this.__genData = Data;
-                    Pattern = ss = Data = null;
-                } else { return false; }
+                    break;
+                }
+              }
             }
-            if(this.Action == ACTION_DELETE) {
-                Sql = 'DELETE FROM `' + this._table + '`';
-            }
-        }
-
-        if(this._conditions.length)
-        {
-            Sql+=' WHERE ' + this._conditions.join(' ' + this.condType + ' ');
-            this.__toExData(this._condData);
-        }
-
-        if(this.Action == ACTION_SELECT)
-        {
-            if(this._group.length) { Sql+= ' GROUP BY ' + this._group.join(', '); }
-            if(this._order.length) { Sql+= ' ORDER BY ' + this._order.join(', '); }
-        }
-
-        if(this.Action == ACTION_SELECT || this.mustRange)
-        {
-            Sql+=' LIMIT';
-            if(this._from) { Sql+= ' '+this._from+','; }
-            Sql+=' '+this._to;
-        }
-        Sql+=';';
+          }
+        } else { return null; }
+        return mysqlDriver.format(`(${condSql})`,condData);
+      }).filter(i=>i).join(` ${this.__q('conditionType')||'AND'} `);
     }
-    return Sql;
-};
+    return null
+  }
 
-MySqlMaster.prototype.Execute = function(closeConnection,callback)
-{
-    var Sql = this.getSql();
-    if(Sql)
-    {
-        CONNECTION = CONNECTION || mysql.createConnection(Config);
-        CONNECTION.query(Sql,this.__genData,function(err,rows){
-            if(closeConnection) { CONNECTION.end(); }
-            if(callback) { callback(err,rows); }
-        });
+  __sql_select(){
+    let SqlStr = `SELECT `;
+    let SqlValues = null;
+
+    if(this.__q('distinct')) { SqlStr += 'DISTINCT ' }
+
+    if(this.query.isCount) {
+      SqlStr += `COUNT(${this.query.isCount.distinict?'DISTINCT ':''}${this.query.isCount.field}) AS COUNT`;
     } else {
-        if(callback) { callback('NO SQL',false); }
+      if(this.query.fields && Array.isArray(this.query.fields) && this.query.fields.length) {
+        SqlStr += this.query.fields.map(field=>{
+          return `${this._column(field.name,field.ps)}`+(field.as?` as ${this.db.escapeId(field.as)}`:'');
+        }).join(', ')
+      } else { SqlStr += '*'; }
     }
-};
 
-MySqlMaster.prototype.GetArray = function(close,callback)
-{
-    this.Execute(close,callback);
-};
+    SqlStr += ` FROM ${this.db.escapeId(this.__q('table'))}`;
 
-MySqlMaster.prototype.GetOne = function(close,callback)
-{
-    this.Range(1);
-    this.Execute(close,function(err,rows){
-		rows = (!err && rows && rows.length) ? rows[0] : false;
-        callback(err,rows);
-    });
-};
+    const psevdo = this.__q('psevdo');
 
-MySqlMaster.prototype.GetCell = function(close,callback)
-{
-    this.Execute(close,function(err,rows){
-        if(!err && rows && rows.length)
-        {
-            for(var k in rows[0])
-            {
-                callback(err,rows[0][k]);
-                break;
-            }
+    if(psevdo) { SqlStr += ` AS ${this.db.escapeId(psevdo)}`; }
+
+    if(this.query.join && Array.isArray(this.query.join) && this.query.join.length) {
+      SqlStr += ' '+this.query.join.map((join)=>{
+        let joinStr = `${join.type} JOIN ${this.db.escapeId(join.table)}`;
+        if(join.ps) { joinStr+=` AS ${this.db.escapeId(join.ps)}`; }
+        if(Array.isArray(join.params)) {
+          joinStr+=` ON(${join.params.join(' AND ')})`;
         } else {
-          callback(err,false);
+          joinStr+=` USING(${this.db.escapeId(join.params)})`;
         }
-    });
-};
+        return mysqlDriver.format(joinStr);
+        }).join(' ')
+    }
 
-module.exports = new MySqlMaster();
+    const Condition = this.___sql_condition();
+
+    if(Condition) {
+      SqlStr += ' WHERE ' + Condition;
+    }
+
+    if(this.query.group && Array.isArray(this.query.group) && this.query.group.length) {
+      SqlStr+=' GROUP BY '+this.query.group.map(group=>this._column(group.column,group.ps)).join(', ')
+    }
+
+    if(this.query.order && Array.isArray(this.query.order) && this.query.order.length) {
+      SqlStr+=' ORDER BY '+this.query.order.map(order=>`${this._column(order.column,order.ps)} ${order.order}`).join(', ')
+    }
+
+    if(!this.query.isCount && (this.query.from||this.query.count)) {
+      SqlStr+=' LIMIT ' + (one=>{
+        return one ?
+          mysqlDriver.format('?',this.query.from||this.query.count) :
+          mysqlDriver.format('?, ?',[this.query.from,this.query.count]);
+        })(!this.query.from != !this.query.count);
+    }
+
+    this.query.isCount = null;
+    return {
+      sql: SqlStr,
+      values:SqlValues
+    };
+  }
+
+  __sql_insert(){
+    let SqlStr = `INSERT INTO ${this.db.escapeId(this.__q('table'))} SET ?`;
+    let SqlValues = this.__q('data');
+    const duplicate = this.__q('duplicate');
+    if(duplicate) {
+      SqlStr += mysqlDriver.format(' ON DUPLICATE KEY UPDATE ?', duplicate);
+    }
+    return {
+      sql: SqlStr,
+      values:SqlValues
+    };
+  }
+
+  __sql_update(){
+    let SqlStr = `UPDATE ${this.db.escapeId(this.__q('table'))} SET ?`;
+    let SqlValues = this.__q('data');
+    let Condition = this.___sql_condition();
+    if(Condition || this.__q('allowAll')) {
+      if(Condition) { SqlStr += ` WHERE ${Condition}`; }
+      return {
+        sql: SqlStr,
+        values:SqlValues
+      };
+    } else {
+      throw new Error('Update needs condition to work!');
+    }
+  }
+
+  __sql_delete(){
+    let SqlStr = `DELETE FROM ${this.db.escapeId(this.__q('table'))}`;
+    let SqlValues = null;
+    let Condition = this.___sql_condition();
+    if(Condition || this.__q('allowAll')) {
+      if(Condition) { SqlStr += ` WHERE ${Condition}`; }
+      return {
+        sql: SqlStr,
+        values:SqlValues
+      };
+    } else {
+      throw new Error('Delete needs condition to work!');
+    }
+  }
+
+  __sql(){
+    switch(this.__q('action')){
+      case _SELECT: return this.__sql_select(); break;
+      case _INSERT: return this.__sql_insert(); break;
+      case _UPDATE: return this.__sql_update(); break;
+      case _DELETE: return this.__sql_delete(); break;
+    }
+    return null;
+  }
+
+  /*----------- RESULTS -----------*/
+
+  sql(sql,values=null){
+    return new Promise((resolve,reject)=>{
+      this.db.query(
+        {
+          sql: sql,
+          values:values
+        },
+        (error, results, fields) => error ?
+          reject(error) :
+          resolve(results)
+      )
+    })
+  }
+
+  run(){
+    return new Promise((resolve,reject)=>{
+      const query = this.__sql();
+      console.info(query);
+      if(!query) { reject('Bad Action') }
+      else {
+        query.sql = `${query.sql};`;
+        this.sql(query.sql,query.values)
+          .then(resolve,reject);
+      }
+    })
+  }
+
+  getCount(field='id',distinict=false){
+    this.__q('isCount',{
+      field : field,
+      distinict : distinict,
+    });
+    return this.cell();
+  }
+
+  getSql(){
+    const query = this.__sql();
+    if(query && query.sql) {
+      return mysqlDriver.format(query.sql,query.values||null);
+    }
+    return null;
+  }
+
+  cell(){
+    return new Promise((resolve,reject)=>{
+      this.run().then((result)=>{
+        if(Array.isArray(result) && result.length && result[0]) {
+          for(let k in result[0]) {
+            if(result[0].hasOwnProperty(k)) {
+              resolve(result[0][k]);
+              break;
+            }
+          }
+        }
+      },reject)
+    })
+  }
+
+  one(){
+    this.count(1);
+    return new Promise((resolve,reject)=>{
+      this.run().then((result)=>{
+        resolve(((res)=>{
+          return Array.isArray(res) && res[0] ? res[0] : null;
+        })(result));
+      },reject);
+    });
+  }
+
+  get(){
+    return this.run();
+  }
+}
+
+module.exports = (config) => {
+  const MySqlConnection = {
+    db:mysqlDriver.createConnection(config),
+    connect:() => new Promise((resolve,reject)=>{
+      MySqlConnection.db.connect((err)=>err ? reject(err) : resolve());
+    }),
+    request:() => new Database(MySqlConnection.db)
+  };
+  return MySqlConnection;
+};
