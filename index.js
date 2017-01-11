@@ -105,7 +105,7 @@ class Database {
     return this;
   }
 
-  order(column,order,_ps=null){
+  order(column,order='>',_ps=null){
     this.__isset('order',[]);
     this.query.order.push({
       column : column,
