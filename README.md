@@ -91,17 +91,21 @@ const GetUsersForEmail = Database.request()
     .Select('Users')
     .fields(['id','name'])
     .condition('age',18,'>')
-    .condition('email',NULL,'!')
+    .condition('email',null,'!')
     .group('email')
     .order('id','<')
-    .page(2,40);
+    .page(3,40);
 
 GetUsersForEmail.get().then((emailTo)=>{
     if(emailTo.lenght) {
         emailTo.map(user=>{sendEmailTo(user)})
     }
 })
+```
 
+Sended sql will be:
+```
+SELECT `Users`.`id`, `Users`.`name` FROM `Users` WHERE (`Users`.`age` > 18) AND (`Users`.`email` IS NOT NULL) GROUP BY `Users`.`email` ORDER BY `Users`.`id` ASC LIMIT 80, 40
 ```
 
 Common Information
